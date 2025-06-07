@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>完全版：癒し魚給料タイマー</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #eef6ff;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    #settingsForm {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 45%;
+      min-width: 200px;
+    }
+    input {
+      flex: 1;
+    }
+    #salary {
+  display: inline-block;
+  will-change: transform;
+      font-size: 1.5em;
+      margin: 10px 0;
+    }
+    #aquarium {
+      position: relative;
+      width: 90%;
+      height: 320px;
+      margin: 0 auto 10px;
+      background: linear-gradient(to top, #a0d8ef, #e0f7ff);
+      border: 3px solid #5ba4cf;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .fish {
+      position: absolute;
+      font-size: 24px;
+      user-select: none;
+      pointer-events: none;
+    }
+    .salary-flash {
+      animation: flash-grow 0.3s ease;
+    }
+    @keyframes flash-grow {
+  0% { transform: scale(1); color: black; }
+  50% { transform: scale(1.2); color: black; }
+  100% { transform: scale(1); color: black; }
+}
+      50% { transform: scale(1.5); color: #ff6f61; }
+      100% { transform: scale(1); color: black; }
+    }
+  </style>
+</head>
+<body style="overflow-x: hidden;">
+
+<h1>給料タイマー</h1>
+
+<form id="settingsForm">
+  <div class="form-group"><label>月給（円）:</label><input type="number" id="monthlySalary" required></div>
+  <div class="form-group"><label>労働日数（日）:</label><input type="number" id="workDays" required></div>
+  <div class="form-group"><label>勤務時間（時間）:</label><input type="number" step="any" id="dailyHours" required></div>
+  <div class="form-group"><label>勤務開始:</label><input type="time" id="startTime" required step="300"></div>
+  <div class="form-group"><label>休憩①開始:</label><input type="time" id="breakStart" required step="300"></div>
+  <div class="form-group"><label>休憩①終了:</label><input type="time" id="breakEnd" required step="300"></div>
+  <div class="form-group"><label>休憩②開始:</label><input type="time" id="breakStart2" step="300"></div>
+  <div class="form-group"><label>休憩②終了:</label><input type="time" id="breakEnd2" step="300"></div>
+  <div class="form-group"><label>時間外開始:</label><input type="time" id="overtimeStart" step="300"></div>
+  <div class="form-group"><label>時間外時給（円）:</label><input type="number" id="overtimeRate"></div>
+  <div class="form-group"><label>勤務終了:</label><input type="time" id="endTime" required step="300"></div>
+  <div class="form-group" style="justify-content: center; width: 100%;">
+    <button type="submit">スタート</button>
+  </div>
+</form>
+
+<p id="hourlyRate">時給：-- 円 </p>
+<p id="salary">今日の給料：¥0 </p>
+<div id="aquarium"></div>
+
+<script>
+// --- JavaScript ロジックここから ---
+let yenPerSecond = 0;
+let workStart, workEnd, breakStart, breakEnd, breakStart2, breakEnd2, overtimeStart;
+let earnedToday = 0;
+let dailyTarget = 0;
+let lastFishAmount = 0;
+let overtimeRate = 0;
+const yenPerFish = 100;
+const aquarium = document.getElementById("aquarium");
+const fishEmojis = ["🐟", "🐠", "🐡", "🦈", "🐬"];
+const fishes = [];
+
+function parseTime(str) {
+  if (!str) return null;
+  const [h, m] = str.split(":" ).map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function createFish() {
+  const el = document.createElement("div");
+  el.className = "fish";
+  el.textContent = fishEmojis[Math.floor(Math.random() * fishEmojis.length)];
+  aquarium.appendChild(el);
+
+  const x = Math.random() * (aquarium.clientWidth - 30);
+  const y = Math.random() * (aquarium.clientHeight - 30);
+  const dx = (Math.random() - 0.5) * 2;
+  const dy = (Math.random() - 0.5) * 2;
+
+  fishes.push({ el, x, y, dx, dy });
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+}
+
+function updateSalary() {
+  const now = new Date();
+
+  if (now < workStart) {
+    document.getElementById("salary").textContent = "勤務開始前";
+    return;
+  } else if (now >= workEnd) {
+    document.getElementById("salary").textContent = "勤務終了：¥" + earnedToday.toFixed(0) + " ";
+    return;
+  }
+
+  let earned = 0;
+  let t = new Date(workStart);
+
+  while (t < now && t < workEnd) {
+    let isBreak = (breakStart && t >= breakStart && t < breakEnd) ||
+                  (breakStart2 && t >= breakStart2 && t < breakEnd2);
+    if (!isBreak) {
+      if (overtimeStart && t >= overtimeStart) {
+        earned += overtimeRate / 3600;
+      } else {
+        earned += yenPerSecond;
+      }
+    }
+    t.setSeconds(t.getSeconds() + 1);
+  }
+
+  earnedToday = earned;
+  const salaryElem = document.getElementById("salary");
+  const newSalary = "今日の給料：¥" + earnedToday.toFixed(0) + " ";
+  if (salaryElem.textContent !== newSalary) {
+    salaryElem.textContent = newSalary;
+    salaryElem.classList.add("salary-flash");
+    setTimeout(() => salaryElem.classList.remove("salary-flash"), 300);
+  }
+
+  const rawFishCount = Math.floor(earnedToday / yenPerFish);
+  const maxFishCount = Math.floor((dailyTarget / yenPerFish) / 3);
+  const fishCount = Math.min(rawFishCount, maxFishCount);
+
+  while (lastFishAmount < fishCount) {
+    createFish();
+    lastFishAmount++;
+  }
+}
+
+let lastFrameTime = 0;
+function animateFishes(timestamp) {
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  const elapsed = timestamp - lastFrameTime;
+  if (elapsed >= 50) {
+    for (const fish of fishes) {
+      fish.x += fish.dx;
+      fish.y += fish.dy;
+      if (fish.x < 0 || fish.x > aquarium.clientWidth - 30) fish.dx *= -1;
+      if (fish.y < 0 || fish.y > aquarium.clientHeight - 30) fish.dy *= -1;
+      fish.el.style.left = fish.x + "px";
+      fish.el.style.top = fish.y + "px";
+    }
+    lastFrameTime = timestamp;
+  }
+  requestAnimationFrame(animateFishes);
+}
+
+window.addEventListener("load", () => {
+  const saved = localStorage.getItem("salarySettings");
+  if (saved) {
+    const settings = JSON.parse(saved);
+    document.getElementById("monthlySalary").value = settings.monthlySalary;
+    document.getElementById("workDays").value = settings.workDays;
+    document.getElementById("dailyHours").value = settings.dailyHoursRaw;
+    document.getElementById("startTime").value = settings.startTime;
+    document.getElementById("breakStart").value = settings.breakStart;
+    document.getElementById("breakEnd").value = settings.breakEnd;
+    document.getElementById("breakStart2").value = settings.breakStart2;
+    document.getElementById("breakEnd2").value = settings.breakEnd2;
+    document.getElementById("endTime").value = settings.endTime;
+    document.getElementById("overtimeStart").value = settings.overtimeStart;
+    document.getElementById("overtimeRate").value = settings.overtimeRate;
+  }
+});
+
+document.getElementById("settingsForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+  const monthly = parseFloat(document.getElementById("monthlySalary").value);
+  const workDays = parseFloat(document.getElementById("workDays").value);
+  const dailyHoursRaw = parseFloat(document.getElementById("dailyHours").value);
+  const dailyHours = Math.round(dailyHoursRaw / 0.0833) * 0.0833;
+
+  workStart = parseTime(document.getElementById("startTime").value);
+  breakStart = parseTime(document.getElementById("breakStart").value);
+  breakEnd = parseTime(document.getElementById("breakEnd").value);
+  breakStart2 = parseTime(document.getElementById("breakStart2").value);
+  breakEnd2 = parseTime(document.getElementById("breakEnd2").value);
+  workEnd = parseTime(document.getElementById("endTime").value);
+  overtimeStart = parseTime(document.getElementById("overtimeStart").value);
+  overtimeRate = parseFloat(document.getElementById("overtimeRate").value) || 0;
+
+  const hourlyRate = (monthly / workDays) / dailyHours;
+  document.getElementById("hourlyRate").textContent = `時給：${Math.round(hourlyRate)} 円 `;
+  const totalMonthlySeconds = workDays * dailyHours * 3600;
+  yenPerSecond = monthly / totalMonthlySeconds;
+  dailyTarget = monthly / workDays;
+  lastFishAmount = 0;
+  fishes.length = 0;
+  aquarium.innerHTML = "";
+
+  const settings = {
+    monthlySalary: monthly,
+    workDays,
+    dailyHoursRaw,
+    startTime: document.getElementById("startTime").value,
+    breakStart: document.getElementById("breakStart").value,
+    breakEnd: document.getElementById("breakEnd").value,
+    breakStart2: document.getElementById("breakStart2").value,
+    breakEnd2: document.getElementById("breakEnd2").value,
+    endTime: document.getElementById("endTime").value,
+    overtimeStart: document.getElementById("overtimeStart").value,
+    overtimeRate: overtimeRate
+  };
+  localStorage.setItem("salarySettings", JSON.stringify(settings));
+
+  requestAnimationFrame(animateFishes);
+  setInterval(updateSalary, 1000);
+  updateSalary();
+});
+// --- JavaScript ロジックここまで ---
+</script>
+
+</body>
+</html>
